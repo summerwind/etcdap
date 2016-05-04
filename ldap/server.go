@@ -99,27 +99,28 @@ func (s *Server) logf(format string, args ...interface{}) {
 type defaultHandler struct{}
 
 func (dh *defaultHandler) ServeLDAP(rw ResponseWriter, req *Request) {
-	bindReq := req.Message.ProtocolOp.(*BindRequest)
+	var msg *LDAPMessage
 
-	lr := LDAPResult{
-		ResultCode:        ResultCodeSuccess,
-		MatchedDN:         bindReq.Name,
-		DiagnosticMessage: LDAPString{},
-	}
-	br := &BindResponse{lr, nil}
-	msg := &LDAPMessage{
-		MessageID:  req.Message.MessageID,
-		ProtocolOp: br,
-	}
-
-	buf, err := msg.Bytes()
-	if err != nil {
-		fmt.Printf("Error: %s\n", err)
+	switch req.Message.ProtocolOp.(type) {
+	case *BindRequest:
+		bindReq := req.Message.ProtocolOp.(*BindRequest)
+		lr := NewLDAPResult(ResultCodeSuccess, bindReq.Name, LDAPString(""), nil)
+		br := NewBindResponse(lr, nil)
+		msg = NewLDAPMessage(req.Message.MessageID, br, nil)
+		fmt.Println("Bind Request!")
+	case *SearchRequest:
+		fmt.Println("Search Request!")
 	}
 
-	rw.Write(buf)
-	fmt.Printf("Bytes: %x\n", buf)
-	fmt.Println("Default handler!")
+	if msg != nil {
+		buf, err := msg.Bytes()
+		if err != nil {
+			fmt.Printf("Error: %s\n", err)
+		}
+
+		rw.Write(buf)
+		fmt.Printf("Bytes: %x\n", buf)
+	}
 }
 
 func NewDefaultHandler() *defaultHandler {

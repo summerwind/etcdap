@@ -1,10 +1,5 @@
 package ldap
 
-import (
-	"bytes"
-	"encoding/asn1"
-)
-
 // ------------------------------------------------------------------
 // ExtendedRequest ::= [APPLICATION 23] SEQUENCE {
 //      requestName      [0] LDAPOID,

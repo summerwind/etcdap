@@ -3,6 +3,7 @@ package ldap
 import (
 	"bytes"
 	"encoding/asn1"
+	"fmt"
 )
 
 type LDAPField interface {
@@ -20,7 +21,7 @@ func (e LDAPError) Error() string {
 	return e.Message
 }
 
-func NewLDAPError(rc ResultCode, msg string) *LDAPError {
+func NewLDAPError(rc int, msg string) *LDAPError {
 	return &LDAPError{
 		ResultCode: rc,
 		Message:    msg,
@@ -55,6 +56,29 @@ func NewLDAPError(rc ResultCode, msg string) *LDAPError {
 //          intermediateResponse  IntermediateResponse },
 //     controls       [0] Controls OPTIONAL }
 // ------------------------------------------------------------------
+const (
+	TypeBindRequest = iota
+	TypeBindResponse
+	TypeUnbindRequest
+	TypeSearchRequest
+	TypeSearchResultEntry
+	TypeSearchResultDone
+	TypeSearchResultReference
+	TypeModifyRequest
+	TypeModifyResponse
+	TypeAddRequest
+	TypeAddResponse
+	TypeDelRequest
+	TypeDelResponse
+	TypeModifyDNRequest
+	TypeModifyDNResponse
+	TypeCompareRequest
+	TypeCompareResponse
+	TypeAbandonRequest
+	TypeExtendedRequest
+	TypeExtendedResponse
+)
+
 type ProtocolOp LDAPField
 
 type LDAPMessage struct {
@@ -104,12 +128,72 @@ func (msg LDAPMessage) Bytes() (b []byte, err error) {
 	return
 }
 
-func NewLDAPMessage() *LDAPMessage {
-	return nil
+func NewLDAPMessage(id MessageID, op ProtocolOp, ctrl *Controls) *LDAPMessage {
+	return &LDAPMessage{
+		MessageID:  id,
+		ProtocolOp: op,
+		Controls:   ctrl,
+	}
 }
 
-func ParseLDAPMessage(b []byte) *LDAPMessage {
-	return nil
+func ParseLDAPMessage(b []byte) (msg *LDAPMessage, rest []byte, err error) {
+	var rawEnvelope, rawProtocolOp, rawControls asn1.RawValue
+
+	msg = new(LDAPMessage)
+
+	rest, err = asn1.Unmarshal(b, &rawEnvelope)
+	if err != nil {
+		err = NewLDAPError(ResultCodeProtocolError, "Invalid LDAPMessage")
+		return
+	}
+
+	r, err := asn1.Unmarshal(rawEnvelope.Bytes, &msg.MessageID)
+	if err != nil {
+		err = NewLDAPError(ResultCodeProtocolError, "Invalid MessageID")
+		return
+	}
+
+	r, err = asn1.Unmarshal(r, &rawProtocolOp)
+	if err != nil {
+		err = NewLDAPError(ResultCodeProtocolError, "Invalid ProtocolOp")
+		return
+	}
+
+	if len(r) > 0 {
+		r, err = asn1.Unmarshal(r, &rawControls)
+		if err != nil {
+			err = NewLDAPError(ResultCodeProtocolError, "Invalid Controls")
+			return
+		}
+	}
+
+	fmt.Printf("Bytes:      %s - %x\n", len(rawProtocolOp.Bytes), rawProtocolOp.Bytes)
+	fmt.Printf("Full Bytes: %s - %x\n", len(rawProtocolOp.FullBytes), rawProtocolOp.FullBytes)
+	switch rawProtocolOp.Tag {
+	case 0:
+		bindReq, err := ParseBindRequest(rawProtocolOp.FullBytes)
+		if err != nil {
+			return nil, rest, err
+		}
+		msg.ProtocolOp = bindReq
+	case 1:
+		bindRes, err := ParseBindResponse(rawProtocolOp.FullBytes)
+		if err != nil {
+			return nil, rest, err
+		}
+		msg.ProtocolOp = bindRes
+	case 3:
+		searchReq, err := ParseSearchRequest(rawProtocolOp.FullBytes)
+		if err != nil {
+			return nil, rest, err
+		}
+		msg.ProtocolOp = searchReq
+	default:
+		err = NewLDAPError(ResultCodeOperationsError, "Unsupported ProtocolOp")
+		return
+	}
+
+	return
 }
 
 // ------------------------------------------------------------------
@@ -134,6 +218,33 @@ type LDAPOID []byte
 //                       -- [RFC4514]
 // ------------------------------------------------------------------
 type LDAPDN LDAPString
+
+// ------------------------------------------------------------------
+// AttributeDescription ::= LDAPString
+//                         -- Constrained to <attributedescription>
+//                         -- [RFC4512]
+// ------------------------------------------------------------------
+type AttributeDescription LDAPString
+
+// ------------------------------------------------------------------
+// AttributeValue ::= OCTET STRING
+// ------------------------------------------------------------------
+type AttributeValue []byte
+
+// ------------------------------------------------------------------
+// AttributeValueAssertion ::= SEQUENCE {
+//      attributeDesc   AttributeDescription,
+//      assertionValue  AssertionValue }
+// ------------------------------------------------------------------
+type AttributeValueAssertion struct {
+	AttributeDesc  AttributeDescription
+	AssertionValue AssertionValue
+}
+
+// ------------------------------------------------------------------
+// AssertionValue ::= OCTET STRING
+// ------------------------------------------------------------------
+type AssertionValue []byte
 
 // ------------------------------------------------------------------
 // LDAPResult ::= SEQUENCE {
@@ -288,8 +399,13 @@ func (lr LDAPResult) bytes() (b []byte, err error) {
 	return
 }
 
-func NewLDAPResult() *LDAPResult {
-	return nil
+func NewLDAPResult(rc int, md LDAPDN, dm LDAPString, ref *Referral) *LDAPResult {
+	return &LDAPResult{
+		ResultCode:        rc,
+		MatchedDN:         md,
+		DiagnosticMessage: dm,
+		Referral:          ref,
+	}
 }
 
 func ParseLDAPResult(b []byte) *LDAPResult {

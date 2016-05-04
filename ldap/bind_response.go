@@ -12,7 +12,7 @@ import (
 // ------------------------------------------------------------------
 type BindResponse struct {
 	LDAPResult
-	ServerSaslCreds []byte
+	ServerSaslCreds ServerSaslCreds
 }
 
 func (br BindResponse) Class() int {
@@ -55,10 +55,39 @@ func (br BindResponse) Bytes() (b []byte, err error) {
 	return
 }
 
-func NewBindResponse() *BindResponse {
-	return nil
+func NewBindResponse(lr *LDAPResult, ssc ServerSaslCreds) *BindResponse {
+	return &BindResponse{*lr, ssc}
 }
 
-func ParseBindResponse(b []byte) *BindResponse {
-	return nil
+func ParseBindResponse(b []byte) (res *BindResponse, err error) {
+	return
+}
+
+type ServerSaslCreds []byte
+
+func (ssc ServerSaslCreds) Class() int {
+	return 0
+}
+
+func (ssc ServerSaslCreds) Tag() int {
+	return 7
+}
+
+func (ssc ServerSaslCreds) Bytes() (b []byte, err error) {
+	sasl := asn1.RawValue{
+		Class:      ssc.Class(),
+		Tag:        ssc.Tag(),
+		IsCompound: false,
+		Bytes:      ssc,
+	}
+	b, err = asn1.Marshal(sasl)
+	return
+}
+
+func NewServerSaslCreds(b []byte) ServerSaslCreds {
+	return ServerSaslCreds(b)
+}
+
+func ParseServerSaslCreds(b []byte) (ssc ServerSaslCreds, err error) {
+	return ServerSaslCreds(b), nil
 }

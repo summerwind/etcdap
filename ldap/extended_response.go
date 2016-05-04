@@ -1,10 +1,5 @@
 package ldap
 
-import (
-	"bytes"
-	"encoding/asn1"
-)
-
 // ------------------------------------------------------------------
 // ExtendedResponse ::= [APPLICATION 24] SEQUENCE {
 //      COMPONENTS OF LDAPResult,
